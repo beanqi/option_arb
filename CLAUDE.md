@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A read-only monitor (Rust/tokio) that watches **Binance options** (every expiry × every strike) against **Binance spot BTCUSDT** for **conversion / reversal** put-call-parity arbitrage. It tracks each opportunity as a **position lifecycle** — open → (early close when profitable | expiry settlement) — and records it to SQLite (`positions` table), serving a web page. **It never places orders.** Fees are deducted on a **round-trip basis: 6 legs** (open 3 + close 3) via `OA_FEE_RATE=0.0001`; it ignores slippage and does not model borrow/funding costs. Code comments and the README are in Chinese; keep that convention when editing.
+A read-only monitor (Rust/tokio) that watches **Binance options** (every expiry × every strike) against **Binance spot BTCUSDT** for **conversion / reversal** put-call-parity arbitrage. It tracks each opportunity as a **position lifecycle** — open → (early close when profitable | expiry settlement) — and records it to SQLite (`positions` table), serving a web page. **It never places orders.** Fees are deducted on a **round-trip basis: 6 legs** (open 3 + close 3) via `OA_FEE_RATE=0.0025`; it ignores slippage and does not model borrow/funding costs. Code comments and the README are in Chinese; keep that convention when editing.
 
 **Key model insight**: for a given `(expiry, strike)`, closing a `reversal` is exactly doing the `conversion` action at close time (and vice versa), so K cancels and round-trip net = `open_gross + close_gross − 6 leg fees`. The two gross formulas are reused for both open and close.
 

@@ -63,10 +63,10 @@ sqlite3 data.db "SELECT kind,status,expiry,strike,open_rate,net_profit_rate,est_
 | 变量 | 默认 | 说明 |
 |------|------|------|
 | `OA_UNDERLYING` | `BTC` | 标的代号 |
-| `OA_MIN_PROFIT_RATE` | `0.0` | 开仓门槛：扣费后开仓锁定率下限（0 = 所有正利润均开仓） |
+| `OA_MIN_PROFIT_RATE` | `0.0005` | 开仓门槛：扣费后开仓锁定率下限（默认万分之 5） |
 | `OA_MIN_ANNUAL_RATE` | `0.10` | 开仓门槛：扣费后年化锁定率下限（0.10 = 10%） |
 | `OA_MIN_EXEC_QTY` | `0.0` | 开仓门槛：可执行量下限（BTC） |
-| `OA_FEE_RATE` | `0.0001` | 单腿手续费率，默认万分之一（开/平各 3 腿共 6 笔） |
+| `OA_FEE_RATE` | `0.0025` | 单腿手续费率，默认万分之 25（开/平各 3 腿共 6 笔） |
 | `OA_CLOSE_RATE_DISCOUNT` | `0.8` | 平仓折扣：往返净利率 ≥ 系数 × 开仓锁定率 时平仓 |
 | `OA_EXERCISE_FEE_RATE` | `0.00015` | 到期 ITM 期权腿行权费率 |
 | `OA_SCAN_INTERVAL_MS` | `250` | 扫描间隔 |
