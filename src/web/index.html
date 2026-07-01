@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BTC 期权权利金套利监控</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0; background:#0f1115; color:#e6e6e6; }
+  header { padding: 14px 20px; background:#161922; border-bottom:1px solid #262a35; }
+  h1 { font-size: 18px; margin:0; }
+  .stats { font-size: 13px; color:#9aa0ad; margin-top:6px; }
+  .stats b { color:#e6e6e6; }
+  .controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px 20px; background:#12141b; border-bottom:1px solid #262a35; }
+  .controls label { font-size:12px; color:#9aa0ad; display:flex; flex-direction:column; gap:3px; }
+  .controls input, .controls select { background:#1c1f29; color:#e6e6e6; border:1px solid #2c313d; border-radius:6px; padding:5px 8px; font-size:13px; }
+  button { background:#2d6cdf; color:#fff; border:0; border-radius:6px; padding:7px 14px; font-size:13px; cursor:pointer; }
+  button.sec { background:#2c313d; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { padding:7px 10px; text-align:right; border-bottom:1px solid #1e222c; white-space:nowrap; }
+  th { position:sticky; top:0; background:#161922; user-select:none; color:#b9c0cc; }
+  th[data-k] { cursor:pointer; }
+  th:first-child, td:first-child, .l { text-align:left; }
+  tr:hover td { background:#171b24; }
+  .rev { color:#4cd07d; }
+  .conv { color:#e0a23c; }
+  .pos { color:#4cd07d; }
+  .neg { color:#e06c6c; }
+  .muted { color:#7d8492; font-size:11px; }
+  .badge { border-radius:4px; padding:1px 6px; font-size:12px; font-weight:600; }
+  .st-open { color:#6fb2ff; background:#12233a; }
+  .st-closed { color:#7ee09d; background:#12351f; }
+  .st-settled { color:#c7ccd6; background:#2a2f3a; }
+  .ops { display:flex; flex-direction:column; gap:3px; min-width:330px; white-space:normal; text-align:left; }
+  .ops-title { color:#9aa0ad; font-size:11px; margin-top:2px; }
+  .ops-title.cl { color:#e0a23c; margin-top:5px; }
+  .leg { display:flex; flex-wrap:wrap; align-items:center; gap:7px; line-height:1.3; }
+  .leg-label { color:#9aa0ad; width:34px; flex:0 0 auto; }
+  .side { border-radius:4px; padding:1px 5px; font-weight:600; font-size:12px; }
+  .side.buy { color:#7ee09d; background:#12351f; }
+  .side.sell { color:#f0b969; background:#3a2710; }
+  .symbol { color:#e6e6e6; min-width:0; overflow-wrap:anywhere; }
+  .price { color:#d6dbe6; font-variant-numeric:tabular-nums; }
+  .wrap { max-height: calc(100vh - 180px); overflow:auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>BTC 期权权利金套利监控 <span class="muted">一笔=开仓+平仓 · 往返扣 6 笔手续费 · reversal=买call+卖put+卖现货,conversion 反之</span></h1>
+  <div class="stats" id="stats">加载中…</div>
+</header>
+<div class="controls">
+  <label>类型
+    <select id="kind">
+      <option value="">全部</option>
+      <option value="reversal">reversal</option>
+      <option value="conversion">conversion</option>
+    </select>
+  </label>
+  <label>状态
+    <select id="status">
+      <option value="">全部</option>
+      <option value="open">持仓中</option>
+      <option value="closed">已平仓</option>
+      <option value="settled">到期结算</option>
+    </select>
+  </label>
+  <label>到期日(YYMMDD)
+    <input id="expiry" placeholder="如 260925" size="8" />
+  </label>
+  <label>最小锁定率%
+    <input id="minrate" type="number" step="0.001" placeholder="0" size="6" />
+  </label>
+  <label>近 N 分钟(按开仓)
+    <input id="mins" type="number" placeholder="不限" size="6" />
+  </label>
+  <label>条数上限
+    <input id="limit" type="number" value="500" size="6" />
+  </label>
+  <button onclick="load()">刷新</button>
+  <label style="flex-direction:row; align-items:center; gap:5px;">
+    <input type="checkbox" id="auto" /> 自动(3s)
+  </label>
+</div>
+<div class="wrap">
+<table>
+  <thead>
+    <tr>
+      <th class="l" data-k="kind">类型</th>
+      <th class="l" data-k="status">状态</th>
+      <th class="l">操作</th>
+      <th data-k="expiry">到期</th>
+      <th data-k="strike">执行价</th>
+      <th data-k="open_rate">锁定率%</th>
+      <th data-k="target_close_rate">目标平仓%</th>
+      <th data-k="net_profit_rate">往返净利率%</th>
+      <th data-k="net_profit_per_btc">利润/BTC</th>
+      <th data-k="exec_qty">可执行BTC</th>
+      <th data-k="est_profit">已实现/预计USDT</th>
+      <th data-k="open_ts">开仓</th>
+      <th data-k="close_ts">平仓</th>
+      <th>持仓</th>
+    </tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+</div>
+<script>
+let sortKey = 'open_ts', sortDir = -1, lastRows = [];
+
+function qs(id){ return document.getElementById(id); }
+function fmtTime(ms){ const d=new Date(ms); return d.toLocaleString(); }
+function n(x, d=3){ return (x==null||isNaN(x))?'':Number(x).toFixed(d); }
+function esc(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[c]));
+}
+function fmtDur(ms){
+  if(ms==null || ms<0) return '-';
+  const s=Math.floor(ms/1000), d=Math.floor(s/86400), h=Math.floor((s%86400)/3600), m=Math.floor((s%3600)/60);
+  if(d>0) return `${d}d${h}h`;
+  if(h>0) return `${h}h${m}m`;
+  return `${m}m`;
+}
+function statusText(s){ return s==='closed'?'已平仓':s==='settled'?'到期结算':'持仓中'; }
+
+// 开仓 3 腿(方向由 kind 决定)。
+function openLegs(r){
+  if(r.kind === 'reversal'){
+    return [
+      { label:'Call', side:'买', sideClass:'buy',  symbol:r.call_symbol, price:n(r.open_call,2) },
+      { label:'Put',  side:'卖', sideClass:'sell', symbol:r.put_symbol,  price:n(r.open_put,2) },
+      { label:'现货', side:'卖', sideClass:'sell', symbol:'BTCUSDT',     price:n(r.open_spot,1) },
+    ];
+  }
+  return [
+    { label:'Call', side:'卖', sideClass:'sell', symbol:r.call_symbol, price:n(r.open_call,2) },
+    { label:'Put',  side:'买', sideClass:'buy',  symbol:r.put_symbol,  price:n(r.open_put,2) },
+    { label:'现货', side:'买', sideClass:'buy',  symbol:'BTCUSDT',     price:n(r.open_spot,1) },
+  ];
+}
+// 平仓 3 腿 = 反向动作。
+function closeLegs(r){
+  if(r.kind === 'reversal'){ // 平 reversal = conversion 动作
+    return [
+      { label:'Call', side:'卖', sideClass:'sell', symbol:r.call_symbol, price:n(r.close_call,2) },
+      { label:'Put',  side:'买', sideClass:'buy',  symbol:r.put_symbol,  price:n(r.close_put,2) },
+      { label:'现货', side:'买', sideClass:'buy',  symbol:'BTCUSDT',     price:n(r.close_spot,1) },
+    ];
+  }
+  return [ // 平 conversion = reversal 动作
+    { label:'Call', side:'买', sideClass:'buy',  symbol:r.call_symbol, price:n(r.close_call,2) },
+    { label:'Put',  side:'卖', sideClass:'sell', symbol:r.put_symbol,  price:n(r.close_put,2) },
+    { label:'现货', side:'卖', sideClass:'sell', symbol:'BTCUSDT',     price:n(r.close_spot,1) },
+  ];
+}
+function legRow(leg){
+  return `<div class="leg">
+    <span class="leg-label">${esc(leg.label)}</span>
+    <span class="side ${leg.sideClass}">${esc(leg.side)}</span>
+    <span class="symbol">${esc(leg.symbol)}</span>
+    <span class="muted">@</span><span class="price">${esc(leg.price)}</span>
+  </div>`;
+}
+function renderOps(r){
+  let html = `<div class="ops"><div class="ops-title">开仓</div>${openLegs(r).map(legRow).join('')}`;
+  if(r.status === 'closed'){
+    html += `<div class="ops-title cl">平仓(反向)</div>${closeLegs(r).map(legRow).join('')}`;
+  } else if(r.status === 'settled'){
+    html += `<div class="ops-title cl">到期交割结算 @${n(r.close_spot,1)}</div>`;
+  }
+  return html + `</div>`;
+}
+
+async function loadStats(){
+  try{
+    const s = await (await fetch('/api/stats')).json();
+    qs('stats').innerHTML = `累计仓位 <b>${s.total||0}</b> · 持仓中 <b>${s.open||0}</b> · 已平仓 <b>${s.closed||0}</b> · 到期结算 <b>${s.settled||0}</b> · 已实现利润 <b>${n(s.realized_profit,2)}</b> USDT · 最新开仓 <b>${s.latest_ts?fmtTime(s.latest_ts):'-'}</b>`;
+  }catch(e){ qs('stats').textContent = 'stats 加载失败'; }
+}
+
+function buildQuery(){
+  const p = new URLSearchParams();
+  if(qs('kind').value) p.set('kind', qs('kind').value);
+  if(qs('status').value) p.set('status', qs('status').value);
+  if(qs('expiry').value) p.set('expiry', qs('expiry').value.trim());
+  if(qs('minrate').value!=='') p.set('min_rate', (parseFloat(qs('minrate').value)/100).toString());
+  if(qs('mins').value!=='') p.set('from', (Date.now()-parseFloat(qs('mins').value)*60000).toString());
+  if(qs('limit').value) p.set('limit', qs('limit').value);
+  return p.toString();
+}
+
+function render(){
+  const rows = [...lastRows].sort((a,b)=>{
+    const av=a[sortKey], bv=b[sortKey];
+    if(av<bv) return -sortDir; if(av>bv) return sortDir; return 0;
+  });
+  const tb = qs('rows');
+  tb.innerHTML = rows.map(r=>{
+    const kcls = r.kind==='reversal'?'rev':'conv';
+    const scls = r.status==='closed'?'st-closed':(r.status==='settled'?'st-settled':'st-open');
+    const held = r.status==='open' ? (Date.now()-r.open_ts) : (r.close_ts - r.open_ts);
+    const rateCls = r.net_profit_rate>=0?'pos':'neg';
+    return `<tr>
+      <td class="l ${kcls}">${esc(r.kind)}</td>
+      <td class="l"><span class="badge ${scls}">${statusText(r.status)}</span></td>
+      <td>${renderOps(r)}</td>
+      <td>${r.expiry}</td>
+      <td>${n(r.strike,0)}</td>
+      <td>${n(r.open_rate*100,4)}</td>
+      <td class="muted">${n(r.target_close_rate*100,4)}</td>
+      <td class="${rateCls}">${n(r.net_profit_rate*100,4)}</td>
+      <td class="${r.net_profit_per_btc>=0?'pos':'neg'}">${n(r.net_profit_per_btc,3)}</td>
+      <td>${n(r.exec_qty,3)}</td>
+      <td>${n(r.est_profit,2)}</td>
+      <td class="muted">${fmtTime(r.open_ts)}</td>
+      <td class="muted">${r.close_ts?fmtTime(r.close_ts):'-'}</td>
+      <td class="muted">${fmtDur(held)}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function load(){
+  await loadStats();
+  try{
+    const res = await (await fetch('/api/opportunities?'+buildQuery())).json();
+    lastRows = res.rows || [];
+    render();
+  }catch(e){ qs('rows').innerHTML = `<tr><td class="l" colspan="14">加载失败: ${esc(e)}</td></tr>`; }
+}
+
+document.querySelectorAll('th[data-k]').forEach(th=>{
+  th.addEventListener('click', ()=>{
+    const k = th.dataset.k;
+    if(sortKey===k) sortDir=-sortDir; else { sortKey=k; sortDir=-1; }
+    render();
+  });
+});
+
+let timer=null;
+qs('auto').addEventListener('change', e=>{
+  if(e.target.checked){ timer=setInterval(load, 3000); } else { clearInterval(timer); }
+});
+
+load();
+</script>
+</body>
+</html>
