@@ -37,9 +37,15 @@ fn annualize(rate: f64, expiry_ms: i64, now: i64) -> f64 {
     annualize_over_days(rate, (expiry_ms - now) as f64 / 86_400_000.0)
 }
 
-/// 三条腿手续费之和(每 BTC),按各腿成交价 × 单腿费率。
-fn trading_fee_per_btc(spot_price: f64, call_price: f64, put_price: f64, fee_rate: f64) -> f64 {
-    fee_rate * (spot_price + call_price + put_price)
+/// 三条腿手续费之和(每 BTC):现货腿按 `spot_rate`、call/put 腿按 `option_rate`。
+fn trading_fee_per_btc(
+    spot_price: f64,
+    call_price: f64,
+    put_price: f64,
+    spot_rate: f64,
+    option_rate: f64,
+) -> f64 {
+    spot_rate * spot_price + option_rate * (call_price + put_price)
 }
 
 /// 单侧建仓/平仓的一档腿信息(成交毛利、三腿成交价、可执行量)。
@@ -99,9 +105,9 @@ fn pos_key(kind: &str, expiry: &str, strike: f64) -> String {
 }
 
 /// 到期交割结算:现货腿按结算价平回 + ITM 期权腿扣行权费。
-fn settle_position(pos: &Position, spot: &BookTop, now: i64, fee_rate: f64, exercise_rate: f64) -> Position {
+fn settle_position(pos: &Position, spot: &BookTop, now: i64, spot_fee_rate: f64, exercise_rate: f64) -> Position {
     let p = settlement_price(spot);
-    let spot_close_fee = fee_rate * p;
+    let spot_close_fee = spot_fee_rate * p;
     let exercise_fee = exercise_rate * p; // 恰一条期权 ITM 被行权(近似,忽略 10% 封顶)
     let net = pos.open_gross - pos.open_fee - spot_close_fee - exercise_fee;
     let rate = net / pos.open_spot;
@@ -211,7 +217,7 @@ pub async fn scanner(
 
             // 到期结算
             if now >= pos.expiry_ms {
-                let settled = settle_position(&pos, &spot, now, cfg.fee_rate, cfg.exercise_fee_rate);
+                let settled = settle_position(&pos, &spot, now, cfg.spot_fee_rate, cfg.exercise_fee_rate);
                 let _ = opp_tx.try_send(settled);
                 positions.remove(&key);
                 last_open.insert(key.clone(), now);
@@ -226,7 +232,7 @@ pub async fn scanner(
             let Some(cl) = close_legs(pos.kind, &call, &put, &spot, pos.strike) else {
                 continue;
             };
-            let close_fee = trading_fee_per_btc(cl.spot, cl.call, cl.put, cfg.fee_rate);
+            let close_fee = trading_fee_per_btc(cl.spot, cl.call, cl.put, cfg.spot_fee_rate, cfg.option_fee_rate);
             let roundtrip_net = pos.open_gross + cl.gross - pos.open_fee - close_fee;
             let rate = roundtrip_net / pos.open_spot;
 
@@ -297,7 +303,7 @@ pub async fn scanner(
                         }) else {
                             continue;
                         };
-                        let open_fee = trading_fee_per_btc(ol.spot, ol.call, ol.put, cfg.fee_rate);
+                        let open_fee = trading_fee_per_btc(ol.spot, ol.call, ol.put, cfg.spot_fee_rate, cfg.option_fee_rate);
                         let open_net = ol.gross - open_fee;
                         if open_net <= 0.0 {
                             continue;
@@ -314,7 +320,7 @@ pub async fn scanner(
                         let (mark_net, mark_rate) =
                             match close_legs(kind, &call, &put, &spot, pair.strike) {
                                 Some(cl) => {
-                                    let cf = trading_fee_per_btc(cl.spot, cl.call, cl.put, cfg.fee_rate);
+                                    let cf = trading_fee_per_btc(cl.spot, cl.call, cl.put, cfg.spot_fee_rate, cfg.option_fee_rate);
                                     let rn = ol.gross + cl.gross - open_fee - cf;
                                     (rn, rn / ol.spot)
                                 }
@@ -414,11 +420,11 @@ mod tests {
         let call = book(990.0, 1.0, 1010.0, 1.0);
         let put = book(990.0, 1.0, 1010.0, 1.0);
         let spot = book(60000.0, 1.0, 60001.0, 1.0);
-        let fee = 0.0001;
+        let (sf, of) = (0.00025, 0.0025);
         let rev = open_reversal(&call, &put, &spot, 60000.0).unwrap();
         let conv = open_conversion(&call, &put, &spot, 60000.0).unwrap();
-        assert!(rev.gross - trading_fee_per_btc(rev.spot, rev.call, rev.put, fee) <= 0.0);
-        assert!(conv.gross - trading_fee_per_btc(conv.spot, conv.call, conv.put, fee) <= 0.0);
+        assert!(rev.gross - trading_fee_per_btc(rev.spot, rev.call, rev.put, sf, of) <= 0.0);
+        assert!(conv.gross - trading_fee_per_btc(conv.spot, conv.call, conv.put, sf, of) <= 0.0);
     }
 
     #[test]
@@ -427,8 +433,9 @@ mod tests {
         let put = book(1200.0, 3.0, 1250.0, 4.0);
         let spot = book(60000.0, 1.5, 60001.0, 1.0);
         let ol = open_reversal(&call, &put, &spot, 60000.0).unwrap();
-        let fee = trading_fee_per_btc(ol.spot, ol.call, ol.put, 0.0001);
-        let expected_fee = (60000.0 + 1000.0 + 1200.0) * 0.0001;
+        let (sf, of) = (0.00025, 0.0025);
+        let fee = trading_fee_per_btc(ol.spot, ol.call, ol.put, sf, of);
+        let expected_fee = 60000.0 * sf + (1000.0 + 1200.0) * of;
         assert!((fee - expected_fee).abs() < 1e-9);
         assert!((ol.gross - fee - (200.0 - expected_fee)).abs() < 1e-9);
     }
@@ -437,15 +444,15 @@ mod tests {
     /// 并验证往返净利恰好扣了 6 笔手续费(开仓 3 + 平仓 3)。
     #[test]
     fn close_trigger_at_discount_with_six_fees() {
-        let fee = 0.0001;
+        let (sf, of) = (0.00025, 0.0025);
         let k = 60000.0;
         // 开仓 reversal
         let o_call = book(950.0, 5.0, 1000.0, 2.0);
         let o_put = book(1200.0, 3.0, 1250.0, 4.0);
         let o_spot = book(60000.0, 1.5, 60001.0, 1.0);
         let ol = open_reversal(&o_call, &o_put, &o_spot, k).unwrap();
-        let open_fee = trading_fee_per_btc(ol.spot, ol.call, ol.put, fee);
-        let open_net = ol.gross - open_fee; // 200 - 6.22
+        let open_fee = trading_fee_per_btc(ol.spot, ol.call, ol.put, sf, of);
+        let open_net = ol.gross - open_fee;
         let open_rate = open_net / ol.spot;
         let target = 0.8 * open_rate;
 
@@ -454,7 +461,7 @@ mod tests {
         let c_put = book(950.0, 5.0, 1010.0, 5.0);
         let c_spot = book(59999.0, 5.0, 60000.0, 5.0);
         let cl = close_legs("reversal", &c_call, &c_put, &c_spot, k).unwrap();
-        let close_fee = trading_fee_per_btc(cl.spot, cl.call, cl.put, fee);
+        let close_fee = trading_fee_per_btc(cl.spot, cl.call, cl.put, sf, of);
         let roundtrip_net = ol.gross + cl.gross - open_fee - close_fee;
         let rate = roundtrip_net / ol.spot;
 
@@ -467,7 +474,7 @@ mod tests {
 
     #[test]
     fn settle_at_expiry_deducts_spot_and_exercise_fee() {
-        let fee = 0.0001;
+        let (sf, of) = (0.00025, 0.0025);
         let ex = 0.00015;
         let mut pos = Position {
             id: "x".into(),
@@ -483,8 +490,8 @@ mod tests {
             open_call: 1000.0,
             open_put: 1200.0,
             open_gross: 200.0,
-            open_fee: (60000.0 + 1000.0 + 1200.0) * fee,
-            open_net: 200.0 - (60000.0 + 1000.0 + 1200.0) * fee,
+            open_fee: 60000.0 * sf + (1000.0 + 1200.0) * of,
+            open_net: 200.0 - (60000.0 * sf + (1000.0 + 1200.0) * of),
             open_rate: 0.0,
             open_annual_rate: 0.0,
             target_close_rate: 0.0,
@@ -502,9 +509,9 @@ mod tests {
         };
         pos.open_net = pos.open_gross - pos.open_fee;
         let spot = book(60000.0, 1.0, 60002.0, 1.0); // 结算价 = 60001
-        let settled = settle_position(&pos, &spot, 86_400_000, fee, ex);
+        let settled = settle_position(&pos, &spot, 86_400_000, sf, ex);
         let p = 60001.0;
-        let expected = pos.open_gross - pos.open_fee - fee * p - ex * p;
+        let expected = pos.open_gross - pos.open_fee - sf * p - ex * p;
         assert_eq!(settled.status, "settled");
         assert!((settled.net_profit_per_btc - expected).abs() < 1e-6);
         assert!((settled.est_profit - expected * 1.5).abs() < 1e-6);

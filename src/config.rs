@@ -18,8 +18,10 @@ pub struct Config {
     pub min_annual_rate: f64,
     /// 记录门槛：顶档可执行量下限（BTC）。
     pub min_exec_qty: f64,
-    /// 单腿手续费率。默认万分之 25，按每条腿成交价格分别扣除（开仓 3 腿 + 平仓 3 腿）。
-    pub fee_rate: f64,
+    /// 现货腿手续费率。默认万分之 2.5，按现货成交价扣除（开仓 + 平仓各一次）。
+    pub spot_fee_rate: f64,
+    /// 期权腿手续费率。默认万分之 25，按 call/put 成交价分别扣除（开/平各 2 腿）。
+    pub option_fee_rate: f64,
     /// 平仓折扣系数：往返净收益率 ≥ 系数 × 开仓锁定率 时平仓。默认 0.8（打 8 折）。
     pub close_rate_discount: f64,
     /// 到期 ITM 期权腿行权费率。默认万分之 1.5。
@@ -59,7 +61,8 @@ impl Config {
             min_profit_rate: env_or("OA_MIN_PROFIT_RATE", 0.0005),
             min_annual_rate: env_or("OA_MIN_ANNUAL_RATE", 0.10),
             min_exec_qty: env_or("OA_MIN_EXEC_QTY", 0.0),
-            fee_rate: env_or("OA_FEE_RATE", 0.0025),
+            spot_fee_rate: env_or("OA_SPOT_FEE_RATE", 0.00025),
+            option_fee_rate: env_or("OA_OPTION_FEE_RATE", 0.0025),
             close_rate_discount: env_or("OA_CLOSE_RATE_DISCOUNT", 0.8),
             exercise_fee_rate: env_or("OA_EXERCISE_FEE_RATE", 0.00015),
             scan_interval_ms: env_or("OA_SCAN_INTERVAL_MS", 250),

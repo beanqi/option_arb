@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A read-only monitor (Rust/tokio) that watches **Binance options** (every expiry × every strike) against **Binance spot BTCUSDT** for **conversion / reversal** put-call-parity arbitrage. It tracks each opportunity as a **position lifecycle** — open → (early close when profitable | expiry settlement) — and records it to SQLite (`positions` table), serving a web page. **It never places orders.** Fees are deducted on a **round-trip basis: 6 legs** (open 3 + close 3) via `OA_FEE_RATE=0.0025`; it ignores slippage and does not model borrow/funding costs. Code comments and the README are in Chinese; keep that convention when editing.
+A read-only monitor (Rust/tokio) that watches **Binance options** (every expiry × every strike) against **Binance spot BTCUSDT** for **conversion / reversal** put-call-parity arbitrage. It tracks each opportunity as a **position lifecycle** — open → (early close when profitable | expiry settlement) — and records it to SQLite (`positions` table), serving a web page. **It never places orders.** Fees are deducted on a **round-trip basis: 6 legs** (open 3 + close 3), spot legs via `OA_SPOT_FEE_RATE=0.00025` and option legs via `OA_OPTION_FEE_RATE=0.0025`; it ignores slippage and does not model borrow/funding costs. Code comments and the README are in Chinese; keep that convention when editing.
 
 **Key model insight**: for a given `(expiry, strike)`, closing a `reversal` is exactly doing the `conversion` action at close time (and vice versa), so K cancels and round-trip net = `open_gross + close_gross − 6 leg fees`. The two gross formulas are reused for both open and close.
 
@@ -24,7 +24,7 @@ sqlite3 data.db "SELECT kind,status,expiry,strike,open_rate,net_profit_rate,est_
   FROM positions ORDER BY open_ts DESC LIMIT 20"
 ```
 
-All runtime config is via `OA_*` environment variables (see `src/config.rs` / README table). Notable knobs: `OA_FEE_RATE` (per leg, charged 6×), `OA_CLOSE_RATE_DISCOUNT` (close when round-trip rate ≥ discount × locked open rate, default 0.8), `OA_EXERCISE_FEE_RATE` (ITM exercise fee at settlement), `OA_MIN_ANNUAL_RATE`, `OA_MIN_PROFIT_RATE`, `OA_MIN_EXEC_QTY` (open thresholds), `OA_SCAN_INTERVAL_MS`, `OA_RECORD_INTERVAL_MS` (mark-update + re-open throttle), `OA_DB_PATH`, `OA_WEB_PORT`.
+All runtime config is via `OA_*` environment variables (see `src/config.rs` / README table). Notable knobs: `OA_SPOT_FEE_RATE` (spot leg, charged 2×) + `OA_OPTION_FEE_RATE` (each option leg, charged 4×), `OA_CLOSE_RATE_DISCOUNT` (close when round-trip rate ≥ discount × locked open rate, default 0.8), `OA_EXERCISE_FEE_RATE` (ITM exercise fee at settlement), `OA_MIN_ANNUAL_RATE`, `OA_MIN_PROFIT_RATE`, `OA_MIN_EXEC_QTY` (open thresholds), `OA_SCAN_INTERVAL_MS`, `OA_RECORD_INTERVAL_MS` (mark-update + re-open throttle), `OA_DB_PATH`, `OA_WEB_PORT`.
 
 ## Architecture
 
@@ -50,7 +50,7 @@ ws_spot ───────────────────────┘
 ### Conventions worth knowing
 
 - **Strike keys**: strikes are `f64` but keyed in maps as `(strike*1000).round() as i64` via `strike_key()` — always use that helper, never the raw float, for map keys. Position map key is `format!("{kind}|{expiry}|{strike_key}")`; the DB primary key `id` is `"{kind}-{expiry}-{strike_key}-{open_ts}"`.
-- **The two gross profit formulas in `scan.rs` are the spec** (also tabulated in README) and are covered by unit tests; changing a sign changes what counts as an opportunity. `reversal_profit` uses spot_bid/put_bid/call_ask; `conversion_profit` uses spot_ask/put_ask/call_bid. **They serve double duty**: `open_reversal`/`open_conversion` for opening, and `close_legs` reuses the *opposite* one for the reverse-action close. Fees are `OA_FEE_RATE * (spot+call+put)` per side, charged on both open and close.
+- **The two gross profit formulas in `scan.rs` are the spec** (also tabulated in README) and are covered by unit tests; changing a sign changes what counts as an opportunity. `reversal_profit` uses spot_bid/put_bid/call_ask; `conversion_profit` uses spot_ask/put_ask/call_bid. **They serve double duty**: `open_reversal`/`open_conversion` for opening, and `close_legs` reuses the *opposite* one for the reverse-action close. Fees are `OA_SPOT_FEE_RATE*spot + OA_OPTION_FEE_RATE*(call+put)` per side, charged on both open and close.
 - **Quote parsing** tolerates Binance sending numbers as JSON strings — use `model::parse_f64`, not direct deserialization, for price/qty fields.
 - `Position.kind` (open direction) and `Position.status` (`"open"`/`"closed"`/`"settled"`) are `&'static str`, relied on by the DB layer and web filters; `db::intern_kind`/`intern_status` re-intern DB strings back to `&'static str` when loading.
 

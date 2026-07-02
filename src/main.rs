@@ -44,12 +44,13 @@ async fn main() -> anyhow::Result<()> {
     db::spawn_writer(cfg.db_path.clone(), opp_rx);
 
     info!(
-        "option_arb 启动: 标的={} 现货={} Web=http://127.0.0.1:{} 库={} 费率={} 平仓折扣={} 行权费率={} 最小净年化={:.2}%",
+        "option_arb 启动: 标的={} 现货={} Web=http://127.0.0.1:{} 库={} 现货费率={} 期权费率={} 平仓折扣={} 行权费率={} 最小净年化={:.2}%",
         cfg.underlying,
         cfg.spot_symbol(),
         cfg.web_port,
         cfg.db_path,
-        cfg.fee_rate,
+        cfg.spot_fee_rate,
+        cfg.option_fee_rate,
         cfg.close_rate_discount,
         cfg.exercise_fee_rate,
         cfg.min_annual_rate * 100.0
