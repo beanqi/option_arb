@@ -14,7 +14,7 @@ pub struct Config {
 
     /// 记录门槛：利润率（profit/spot）下限。默认万分之 5。
     pub min_profit_rate: f64,
-    /// 记录门槛：净年化利润率下限。默认 10%。
+    /// 记录门槛：净年化利润率下限。默认 30%。
     pub min_annual_rate: f64,
     /// 记录门槛：顶档可执行量下限（BTC）。
     pub min_exec_qty: f64,
@@ -22,8 +22,11 @@ pub struct Config {
     pub spot_fee_rate: f64,
     /// 期权腿手续费率。默认万分之 25，按 call/put 成交价分别扣除（开/平各 2 腿）。
     pub option_fee_rate: f64,
-    /// 平仓折扣系数：往返净收益率 ≥ 系数 × 开仓锁定率 时平仓。默认 0.8（打 8 折）。
+    /// 平仓折扣系数：往返净收益率 ≥ 系数 × 开仓锁定率 时平仓。默认 0.6（打 6 折）。
     pub close_rate_discount: f64,
+    /// 开仓可平性门槛：开仓瞬间「立即反向平仓」的往返盯市亏损率上限。
+    /// 若当下反向腿点差把往返净率打到 < −该值,视为点差过宽、根本平不掉,放弃开仓。默认 0.001（0.1%）。
+    pub max_open_mark_loss: f64,
     /// 到期 ITM 期权腿行权费率。默认万分之 1.5。
     pub exercise_fee_rate: f64,
     /// 扫描间隔（毫秒）。
@@ -59,11 +62,12 @@ impl Config {
             spot_ws: env_str("OA_SPOT_WS", "wss://stream.binance.com:9443"),
 
             min_profit_rate: env_or("OA_MIN_PROFIT_RATE", 0.0005),
-            min_annual_rate: env_or("OA_MIN_ANNUAL_RATE", 0.10),
+            min_annual_rate: env_or("OA_MIN_ANNUAL_RATE", 0.30),
             min_exec_qty: env_or("OA_MIN_EXEC_QTY", 0.0),
             spot_fee_rate: env_or("OA_SPOT_FEE_RATE", 0.00025),
             option_fee_rate: env_or("OA_OPTION_FEE_RATE", 0.0025),
-            close_rate_discount: env_or("OA_CLOSE_RATE_DISCOUNT", 0.8),
+            close_rate_discount: env_or("OA_CLOSE_RATE_DISCOUNT", 0.6),
+            max_open_mark_loss: env_or("OA_MAX_OPEN_MARK_LOSS", 0.001),
             exercise_fee_rate: env_or("OA_EXERCISE_FEE_RATE", 0.00015),
             scan_interval_ms: env_or("OA_SCAN_INTERVAL_MS", 250),
             record_interval_ms: env_or("OA_RECORD_INTERVAL_MS", 5000),

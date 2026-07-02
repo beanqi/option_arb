@@ -316,13 +316,19 @@ pub async fn scanner(
                         {
                             continue;
                         }
-                        // 当前往返盯市(初始 net_profit;开仓瞬间通常为负 = 点差成本)
+                        // 当前往返盯市(初始 net_profit;开仓瞬间通常为负 = 点差成本)。
+                        // 可平性闸门:反向腿盘口齐全时,若「立即平仓」的往返净率跌破 −max_open_mark_loss,
+                        // 说明反向点差过宽、这机会根本平不掉,直接放弃开仓(避免开进来后拖到期的大额浮亏)。
                         let (mark_net, mark_rate) =
                             match close_legs(kind, &call, &put, &spot, pair.strike) {
                                 Some(cl) => {
                                     let cf = trading_fee_per_btc(cl.spot, cl.call, cl.put, cfg.spot_fee_rate, cfg.option_fee_rate);
                                     let rn = ol.gross + cl.gross - open_fee - cf;
-                                    (rn, rn / ol.spot)
+                                    let mr = rn / ol.spot;
+                                    if mr < -cfg.max_open_mark_loss {
+                                        continue; // 点差吃掉一切,平不掉
+                                    }
+                                    (rn, mr)
                                 }
                                 None => (open_net, open_rate),
                             };
