@@ -12,9 +12,9 @@ pub struct Config {
     /// 现货 WS 基地址。
     pub spot_ws: String,
 
-    /// 记录门槛：利润率（profit/spot）下限。默认万分之 5。
+    /// 记录门槛：利润率（profit/spot）下限。默认万分之 1。
     pub min_profit_rate: f64,
-    /// 记录门槛：净年化利润率下限。默认 30%。
+    /// 记录门槛：净年化利润率下限。默认 20%。
     pub min_annual_rate: f64,
     /// 记录门槛：顶档可执行量下限（BTC）。
     pub min_exec_qty: f64,
@@ -61,8 +61,8 @@ impl Config {
             options_ws: env_str("OA_OPTIONS_WS", "wss://fstream.binance.com/market"),
             spot_ws: env_str("OA_SPOT_WS", "wss://stream.binance.com:9443"),
 
-            min_profit_rate: env_or("OA_MIN_PROFIT_RATE", 0.0005),
-            min_annual_rate: env_or("OA_MIN_ANNUAL_RATE", 0.30),
+            min_profit_rate: env_or("OA_MIN_PROFIT_RATE", 0.0001),
+            min_annual_rate: env_or("OA_MIN_ANNUAL_RATE", 0.20),
             min_exec_qty: env_or("OA_MIN_EXEC_QTY", 0.0),
             spot_fee_rate: env_or("OA_SPOT_FEE_RATE", 0.00025),
             option_fee_rate: env_or("OA_OPTION_FEE_RATE", 0.0025),

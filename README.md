@@ -63,8 +63,8 @@ sqlite3 data.db "SELECT kind,status,expiry,strike,open_rate,net_profit_rate,est_
 | 变量 | 默认 | 说明 |
 |------|------|------|
 | `OA_UNDERLYING` | `BTC` | 标的代号 |
-| `OA_MIN_PROFIT_RATE` | `0.0005` | 开仓门槛：扣费后开仓锁定率下限（默认万分之 5） |
-| `OA_MIN_ANNUAL_RATE` | `0.30` | 开仓门槛：扣费后年化锁定率下限（0.30 = 30%） |
+| `OA_MIN_PROFIT_RATE` | `0.0001` | 开仓门槛：扣费后开仓锁定率下限（默认万分之 1） |
+| `OA_MIN_ANNUAL_RATE` | `0.20` | 开仓门槛：扣费后年化锁定率下限（0.20 = 20%） |
 | `OA_MIN_EXEC_QTY` | `0.0` | 开仓门槛：可执行量下限（BTC） |
 | `OA_SPOT_FEE_RATE` | `0.00025` | 现货腿手续费率，默认万分之 2.5（开/平各 1 笔） |
 | `OA_OPTION_FEE_RATE` | `0.0025` | 期权腿手续费率，默认万分之 25（call/put，开/平各 2 笔） |
