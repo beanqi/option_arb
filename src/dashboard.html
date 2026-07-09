@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Option Arb Monitor</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --ink: #1b2430;
+      --muted: #667085;
+      --line: #d9e0e8;
+      --green: #0f8b5f;
+      --red: #c2413b;
+      --amber: #a16207;
+      --blue: #2563eb;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .wrap {
+      width: min(1480px, calc(100vw - 32px));
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+      padding: 18px 0;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+      font-weight: 750;
+    }
+
+    .subtitle {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    button {
+      min-height: 36px;
+      border: 1px solid #1d4ed8;
+      border-radius: 6px;
+      background: var(--blue);
+      color: #fff;
+      padding: 0 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      cursor: progress;
+      opacity: 0.72;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      border-radius: 999px;
+      padding: 0 10px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #eef2f7;
+      color: #334155;
+      white-space: nowrap;
+    }
+
+    main {
+      padding: 18px 0 28px;
+    }
+
+	    .metrics {
+	      display: grid;
+	      grid-template-columns: repeat(4, minmax(0, 1fr));
+	      gap: 12px;
+	      margin-bottom: 14px;
+    }
+
+    .metric,
+    .panel,
+    .opportunity {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .metric {
+      min-height: 86px;
+      padding: 13px 14px;
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .value {
+      margin-top: 8px;
+      font-size: 24px;
+      line-height: 1;
+      font-weight: 800;
+    }
+
+    .hint {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 370px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .panel {
+      padding: 14px;
+    }
+
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 15px;
+      line-height: 1.2;
+    }
+
+    .market {
+      display: grid;
+      grid-template-columns: 58px 1fr;
+      gap: 10px;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .market:first-of-type {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .coin {
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: #111827;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .market table,
+    .legs table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    td,
+    th {
+      padding: 5px 0;
+      text-align: right;
+      font-size: 12px;
+      border-bottom: 1px solid #eef2f7;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }
+
+    td:first-child,
+    th:first-child {
+      text-align: left;
+      color: var(--muted);
+    }
+
+      .errors {
+        display: none;
+        margin-bottom: 14px;
+      padding: 11px 14px;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      background: #fff1f2;
+      color: #991b1b;
+        font-size: 13px;
+      }
+
+      .view-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+
+      .tab {
+        border-color: var(--line);
+        background: var(--panel);
+        color: var(--ink);
+      }
+
+      .tab.active {
+        border-color: #111827;
+        background: #111827;
+        color: #fff;
+      }
+
+      .tab-count {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+    .opps {
+      display: grid;
+      gap: 12px;
+    }
+
+    .opportunity {
+      overflow: hidden;
+    }
+
+    .opp-head {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) repeat(4, minmax(100px, 150px));
+      gap: 10px;
+      align-items: center;
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .name {
+      min-width: 0;
+    }
+
+    .pair {
+      font-size: 16px;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .tag {
+      display: inline-flex;
+      margin-top: 5px;
+      padding: 3px 7px;
+      border-radius: 6px;
+      background: #edf7f1;
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+      .tag.reversal {
+        background: #fff7ed;
+        color: var(--amber);
+      }
+
+      .record-meta {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+    .kpi {
+      min-width: 0;
+      text-align: right;
+    }
+
+    .kpi .num {
+      font-size: 18px;
+      font-weight: 850;
+      line-height: 1.1;
+      overflow-wrap: anywhere;
+    }
+
+    .kpi .cap {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .positive {
+      color: var(--green);
+    }
+
+    .negative {
+      color: var(--red);
+    }
+
+    .opp-body {
+      display: grid;
+      grid-template-columns: minmax(260px, 0.9fr) minmax(360px, 1.1fr);
+      gap: 14px;
+      padding: 14px;
+    }
+
+    .book {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .book-cell {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px;
+      background: #fbfcfe;
+      min-width: 0;
+    }
+
+    .book-cell strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .book-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 3px 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .book-row span:last-child {
+      color: var(--ink);
+      font-weight: 700;
+      overflow-wrap: anywhere;
+      text-align: right;
+    }
+
+    .legs {
+      min-width: 0;
+    }
+
+    .note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+      .empty {
+        display: grid;
+      place-items: center;
+      min-height: 220px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      background: #fff;
+      color: var(--muted);
+      text-align: center;
+        padding: 24px;
+      }
+
+      .history-view {
+        display: grid;
+        gap: 12px;
+      }
+
+    @media (max-width: 1160px) {
+      .metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid,
+      .opp-body {
+        grid-template-columns: 1fr;
+      }
+
+      .opp-head {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .kpi {
+        text-align: left;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .wrap {
+        width: min(100vw - 20px, 1480px);
+      }
+
+      .topbar,
+      .metrics,
+      .opp-head,
+      .book {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        justify-content: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap topbar">
+      <div>
+        <h1>BTC / ETH Conversion & Reversal</h1>
+        <div class="subtitle" id="subtitle">等待行情</div>
+      </div>
+      <div class="controls">
+        <span class="pill" id="status">warming_up</span>
+        <span class="pill" id="threshold">年化阈值 20.00%</span>
+        <button id="refresh" type="button">刷新</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="metrics" aria-label="summary">
+      <div class="metric">
+        <div class="label">机会数量</div>
+        <div class="value" id="metric-opps">0</div>
+        <div class="hint">仅显示达标机会</div>
+      </div>
+      <div class="metric">
+        <div class="label">最高年化</div>
+        <div class="value positive" id="metric-best">0.00%</div>
+        <div class="hint">扣除三条腿手续费</div>
+      </div>
+      <div class="metric">
+        <div class="label">手续费模型</div>
+        <div class="value" id="metric-fee">0.0003 BTC/ETH</div>
+        <div class="hint" id="metric-fee-hint">期权按官方 min 公式</div>
+      </div>
+      <div class="metric">
+        <div class="label">刷新间隔</div>
+        <div class="value" id="metric-poll">15s</div>
+        <div class="hint">后台轮询</div>
+      </div>
+    </section>
+
+    <div class="errors" id="errors"></div>
+
+    <div class="view-tabs" role="tablist" aria-label="opportunity views">
+      <button class="tab active" id="tab-current" type="button">当前机会</button>
+      <button class="tab" id="tab-history" type="button">历史记录</button>
+      <span class="tab-count" id="history-count">历史 0</span>
+    </div>
+
+    <section class="grid" id="current-view">
+      <aside class="panel">
+        <h2>市场</h2>
+        <div id="markets"></div>
+      </aside>
+
+      <section>
+        <div class="opps" id="opps"></div>
+        <div class="empty" id="empty">当前没有年化超过阈值的机会</div>
+      </section>
+    </section>
+
+    <section class="history-view" id="history-view" hidden>
+      <div class="opps" id="history"></div>
+      <div class="empty" id="history-empty">暂无历史记录</div>
+    </section>
+  </main>
+
+  <script>
+    const fmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 });
+    const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+    const pct = new Intl.NumberFormat("en-US", { style: "percent", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 });
+    const state = { timer: null, loading: false, historyLoading: false, view: "current" };
+
+    document.getElementById("refresh").addEventListener("click", () => loadSnapshot(true));
+    document.getElementById("tab-current").addEventListener("click", () => setView("current"));
+    document.getElementById("tab-history").addEventListener("click", () => setView("history"));
+
+    function safe(value, formatter = fmt) {
+      return Number.isFinite(value) ? formatter.format(value) : "-";
+    }
+
+    function strategyLabel(strategy) {
+      return strategy === "conversion" ? "Conversion" : "Reversal";
+    }
+
+    function setView(view) {
+      state.view = view;
+      document.getElementById("current-view").hidden = view !== "current";
+      document.getElementById("history-view").hidden = view !== "history";
+      document.getElementById("tab-current").classList.toggle("active", view === "current");
+      document.getElementById("tab-history").classList.toggle("active", view === "history");
+      if (view === "history") loadHistory();
+    }
+
+    async function loadSnapshot(manual = false) {
+      if (state.loading) return;
+      state.loading = true;
+      const button = document.getElementById("refresh");
+      button.disabled = true;
+      try {
+        const response = await fetch(`/api/snapshot?ts=${Date.now()}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        render(await response.json());
+      } catch (error) {
+        renderError([`看板请求失败: ${error.message}`]);
+      } finally {
+        button.disabled = false;
+        state.loading = false;
+        if (manual) schedule(1000);
+      }
+    }
+
+    function schedule(ms) {
+      if (state.timer) clearTimeout(state.timer);
+      state.timer = setTimeout(loadSnapshot, ms);
+    }
+
+    function render(snapshot) {
+      const opportunities = snapshot.opportunities || [];
+      const best = opportunities[0]?.annualized_profit_rate || 0;
+      const generated = snapshot.generated_at ? new Date(snapshot.generated_at).toLocaleString() : "等待行情";
+
+      document.getElementById("subtitle").textContent = `最近更新 ${generated}`;
+      document.getElementById("status").textContent = snapshot.status || "unknown";
+      document.getElementById("threshold").textContent = `年化阈值 ${pct.format(snapshot.config.min_annualized)}`;
+      document.getElementById("metric-opps").textContent = opportunities.length;
+      document.getElementById("metric-best").textContent = pct.format(best);
+      const optionFeeBase = snapshot.config.deribit_option_fee_underlying ?? 0.0003;
+      const optionFeeCap = snapshot.config.deribit_option_premium_cap_rate ?? 0.125;
+      const spotFeeRate = snapshot.config.spot_fee_rate ?? snapshot.config.fee_rate ?? 0;
+      document.getElementById("metric-fee").textContent = `${safe(optionFeeBase)} BTC/ETH`;
+      document.getElementById("metric-fee-hint").textContent = `期权封顶 ${pct.format(optionFeeCap)} 权利金，spot ${pct.format(spotFeeRate)}`;
+      document.getElementById("metric-poll").textContent = `${snapshot.config.poll_secs}s`;
+
+      renderError(snapshot.errors || []);
+      renderMarkets(snapshot.markets || []);
+      renderOpportunities(opportunities);
+      if (state.view === "history") loadHistory();
+      schedule((snapshot.config.poll_secs || 15) * 1000);
+    }
+
+    async function loadHistory() {
+      if (state.historyLoading) return;
+      state.historyLoading = true;
+      try {
+        const response = await fetch(`/api/history?ts=${Date.now()}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        renderHistory(await response.json());
+      } catch (error) {
+        renderHistoryError(`历史记录请求失败: ${error.message}`);
+      } finally {
+        state.historyLoading = false;
+      }
+    }
+
+    function renderError(errors) {
+      const box = document.getElementById("errors");
+      if (!errors.length) {
+        box.style.display = "none";
+        box.textContent = "";
+        return;
+      }
+      box.style.display = "block";
+      box.innerHTML = errors.map(escapeHtml).join("<br>");
+    }
+
+    function renderMarkets(markets) {
+      const root = document.getElementById("markets");
+      root.innerHTML = markets.map((market) => `
+        <div class="market">
+          <div class="coin">${escapeHtml(market.underlying)}</div>
+          <table>
+            <tbody>
+              <tr><td>${escapeHtml(market.spot_symbol)}</td><td>Bid ${safe(market.spot_bid, money)} / Ask ${safe(market.spot_ask, money)}</td></tr>
+              <tr><td>Spot Qty</td><td>Bid ${safe(market.spot_bid_qty)} / Ask ${safe(market.spot_ask_qty)}</td></tr>
+              <tr><td>Options</td><td>${market.option_summaries} summaries / ${market.rough_candidates} candidates</td></tr>
+            </tbody>
+          </table>
+        </div>
+      `).join("");
+    }
+
+    function renderOpportunities(opportunities) {
+      const root = document.getElementById("opps");
+      const empty = document.getElementById("empty");
+      empty.style.display = opportunities.length ? "none" : "grid";
+      root.innerHTML = opportunities.map(renderOpportunity).join("");
+    }
+
+    function renderHistory(records) {
+      const root = document.getElementById("history");
+      const empty = document.getElementById("history-empty");
+      const ordered = [...records].reverse();
+      document.getElementById("history-count").textContent = `历史 ${records.length}`;
+      empty.style.display = ordered.length ? "none" : "grid";
+      empty.textContent = "暂无历史记录";
+      root.innerHTML = ordered.map((record) => renderOpportunity(record.opportunity, record)).join("");
+    }
+
+    function renderHistoryError(message) {
+      const root = document.getElementById("history");
+      const empty = document.getElementById("history-empty");
+      document.getElementById("history-count").textContent = "历史 -";
+      root.innerHTML = "";
+      empty.style.display = "grid";
+      empty.textContent = message;
+    }
+
+	    function renderOpportunity(opp, record = null) {
+	      const tagClass = opp.strategy === "reversal" ? "tag reversal" : "tag";
+	      const recordMeta = record ? `
+	            <div class="record-meta">
+	              记录 ${formatDate(record.recorded_at)}，行情 ${formatDate(record.snapshot_generated_at)}，阈值 ${pct.format(record.min_annualized)}
+	            </div>
+	          ` : "";
+      return `
+          <article class="opportunity">
+            <div class="opp-head">
+              <div class="name">
+                <div class="pair">${escapeHtml(opp.underlying)} ${escapeHtml(opp.expiry)} ${safe(opp.strike, money)}</div>
+                <span class="${tagClass}">${strategyLabel(opp.strategy)}</span>
+                ${recordMeta}
+              </div>
+              ${kpi(pct.format(opp.annualized_profit_rate), "年化")}
+            ${kpi(pct.format(opp.profit_rate), "利润率")}
+            ${kpi(money.format(opp.net_profit_usd), "净利润")}
+            ${kpi(`${safe(opp.quantity)} ${escapeHtml(opp.underlying)}`, "盘口量")}
+          </div>
+          <div class="opp-body">
+            <div class="book">
+              ${bookCell("Spot", [
+                ["Bid", money.format(opp.spot_bid)],
+                ["Ask", money.format(opp.spot_ask)],
+                ["Notional", money.format(opp.notional_usd)]
+              ])}
+              ${bookCell("Call", optionRows(opp.call))}
+              ${bookCell("Put", optionRows(opp.put))}
+            </div>
+            <div class="legs">
+              <table>
+                <thead>
+                  <tr><th>Venue</th><th>Action</th><th>Price</th><th>Qty</th><th>Fee</th></tr>
+                </thead>
+                <tbody>
+                  ${opp.legs.map((leg) => `
+                    <tr>
+                      <td>${escapeHtml(leg.venue)}<br>${escapeHtml(leg.instrument)}</td>
+                      <td>${escapeHtml(leg.action)}</td>
+                      <td>${safe(leg.price)} ${escapeHtml(leg.price_unit)}</td>
+                      <td>${safe(leg.quantity)} / ${safe(leg.available_quantity)}</td>
+                      <td>${money.format(leg.fee_usd)}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+              <div class="note">${escapeHtml(opp.note)} Gross ${money.format(opp.gross_profit_usd)}, fees ${money.format(opp.fees_usd)}, DTE ${safe(opp.days_to_expiry)} days.</div>
+            </div>
+          </div>
+        </article>
+      `;
+    }
+
+    function optionRows(book) {
+      return [
+        ["Bid", `${safe(book.bid_price)} / ${safe(book.bid_amount)}`],
+        ["Ask", `${safe(book.ask_price)} / ${safe(book.ask_amount)}`],
+        ["OI", safe(book.open_interest, compact)],
+        ["Vol", safe(book.volume, compact)]
+      ];
+    }
+
+    function kpi(value, caption) {
+      return `<div class="kpi"><div class="num positive">${value}</div><div class="cap">${caption}</div></div>`;
+    }
+
+    function bookCell(title, rows) {
+      return `
+        <div class="book-cell">
+          <strong>${escapeHtml(title)}</strong>
+          ${rows.map(([label, value]) => `<div class="book-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(value)}</span></div>`).join("")}
+        </div>
+      `;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function formatDate(value) {
+      return value ? new Date(value).toLocaleString() : "-";
+    }
+
+    loadSnapshot();
+  </script>
+</body>
+</html>
